@@ -3,18 +3,13 @@ import streamlit as st
 from langgraph.graph import StateGraph, START, END
 from langchain_openai import ChatOpenAI
 from typing import TypedDict
-from dotenv import load_dotenv
 from pydantic import BaseModel, Field
-
-from google.oauth2.credentials import Credentials
+import json
+import os
 from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from email.mime.text import MIMEText
 import base64
-import os
-
-# -------------------- ENV --------------------
-load_dotenv()
 
 # -------------------- CONFIG --------------------
 ALLOWED_DOMAINS = {"iands.com", "kogo.ai"}
@@ -24,6 +19,13 @@ os.makedirs("tokens", exist_ok=True)
 # -------------------- STREAMLIT CONFIG --------------------
 st.set_page_config(page_title="AI Gmail Draft Generator", page_icon="")
 st.title("AI Gmail Draft Generator (Human Approval Enabled)")
+
+# -------------------- LOAD SECRETS --------------------
+# OpenAI Key
+os.environ["OPENAI_API_KEY"] = st.secrets["openai"]["api_key"]
+
+# Google OAuth credentials
+google_creds = json.loads(st.secrets["google_oauth"]["credentials"])
 
 # -------------------- LLM --------------------
 llm = ChatOpenAI()
@@ -75,21 +77,22 @@ def is_allowed_user(email: str) -> bool:
     return email.split("@")[-1].lower() in ALLOWED_DOMAINS
 
 def parse_emails(input_str: str) -> list:
-    """Split comma-separated emails and remove extra spaces"""
     return [email.strip() for email in input_str.split(",") if email.strip()]
 
 # -------------------- GMAIL AUTH --------------------
 def get_gmail_service():
-    flow = InstalledAppFlow.from_client_secrets_file("credentials.json", SCOPES)
-    creds = flow.run_local_server(port=0)
-    service = build("gmail", "v1", credentials=creds)
+    # Load credentials from secrets
+    flow = InstalledAppFlow.from_client_config(google_creds, SCOPES)
+    creds = flow.run_console()  # Console flow works on Streamlit Cloud
 
+    service = build("gmail", "v1", credentials=creds)
     profile = service.users().getProfile(userId="me").execute()
     user_email = profile["emailAddress"]
 
     if not is_allowed_user(user_email):
         raise PermissionError("Access denied: unauthorized domain")
 
+    # Save token for persistence
     with open(f"tokens/token_{user_email}.json", "w") as f:
         f.write(creds.to_json())
 
@@ -109,7 +112,6 @@ def create_gmail_draft(service, to_list, subject, body, cc_list=None):
         body={"message": {"raw": raw}}
     ).execute()
     return draft.get("id")
-
 
 def send_gmail_message(service, to_list, subject, body, cc_list=None, draft_id=None):
     msg = MIMEText(body.replace("\n", "<br>"), "html")
