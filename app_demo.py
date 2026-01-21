@@ -12,7 +12,7 @@ from email.mime.text import MIMEText
 import base64
 
 # -------------------- CONFIG --------------------
-ALLOWED_DOMAINS = {"iands.com", "kogo.ai"}
+ALLOWED_DOMAINS = {"iands.com", "kogo.ai", "gmail.com"}
 SCOPES = ["https://www.googleapis.com/auth/gmail.compose"]
 os.makedirs("tokens", exist_ok=True)
 
