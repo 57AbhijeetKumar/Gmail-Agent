@@ -81,18 +81,39 @@ def parse_emails(input_str: str) -> list:
 
 # -------------------- GMAIL AUTH --------------------
 def get_gmail_service():
-    # Load credentials from secrets
-    flow = InstalledAppFlow.from_client_config(google_creds, SCOPES)
-    creds = flow.run_console()  # Console flow works on Streamlit Cloud
+    flow = InstalledAppFlow.from_client_config(
+        google_creds,
+        SCOPES,
+        redirect_uri="urn:ietf:wg:oauth:2.0:oob"
+    )
+
+    auth_url, _ = flow.authorization_url(
+        prompt="consent",
+        access_type="offline"
+    )
+
+    st.markdown("### Step 1: Authorize Gmail")
+    st.markdown(f"[Click here to authorize Gmail]({auth_url})")
+
+    auth_code = st.text_input(
+        "Step 2: Paste the authorization code here",
+        key="auth_code"
+    )
+
+    if not auth_code:
+        st.stop()
+
+    flow.fetch_token(code=auth_code)
+    creds = flow.credentials
 
     service = build("gmail", "v1", credentials=creds)
+
     profile = service.users().getProfile(userId="me").execute()
     user_email = profile["emailAddress"]
 
     if not is_allowed_user(user_email):
         raise PermissionError("Access denied: unauthorized domain")
 
-    # Save token for persistence
     with open(f"tokens/token_{user_email}.json", "w") as f:
         f.write(creds.to_json())
 
